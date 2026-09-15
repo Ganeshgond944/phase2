@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EyeType — Assistive Keyboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ══════════════ SIDEBAR ══════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">👁</div>
+      <span class="logo-text">EyeType</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-item active">
+        <span class="nav-icon">⌨️</span>
+        <span>Keyboard</span>
+      </div>
+      <div class="nav-item" id="nav-calibrate">
+        <span class="nav-icon">⊕</span>
+        <span>Calibrate</span>
+      </div>
+      <div class="nav-item" id="nav-phrases">
+        <span class="nav-icon">💬</span>
+        <span>Phrases</span>
+      </div>
+      <div class="nav-item" id="nav-heatmap">
+        <span class="nav-icon">🔥</span>
+        <span>Heatmap</span>
+      </div>
+      <div class="nav-item" id="nav-settings">
+        <span class="nav-icon">⚙️</span>
+        <span>Settings</span>
+      </div>
+      <div class="nav-item" id="nav-sysctl">
+        <span class="nav-icon">🖥️</span>
+        <span>PC Control</span>
+      </div>
+      <div class="nav-item" id="nav-eyemouse" style="margin-top:.5rem;border-top:1px solid var(--border);padding-top:.75rem">
+        <span class="nav-icon">🖱️</span>
+        <span>Eye Mouse</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <button id="btn-theme" class="theme-toggle" title="Toggle theme">
+        <span id="theme-icon">🌙</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ══════════════ MAIN ══════════════ -->
+  <div class="main-area">
+
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">Eye-Tracking Keyboard</div>
+        <div class="page-sub" id="conn-label">Connecting…</div>
+      </div>
+      <div class="topbar-right">
+        <div class="ear-badge" id="ear-badge">
+          <span class="ear-dot" id="ear-dot"></span>
+          <span id="ear-label">Calibrating EAR…</span>
+        </div>
+        <button id="btn-start" class="pill-btn pill-green">▶ Start Camera</button>
+        <button id="btn-stop"  class="pill-btn pill-red" disabled>■ Stop</button>
+      </div>
+    </div>
+
+    <!-- Stat cards row -->
+    <div class="stat-cards">
+      <div class="stat-card">
+        <div class="sc-icon" style="background:#fff3cd">👁</div>
+        <div class="sc-body">
+          <div class="sc-label">Gaze Position</div>
+          <div class="sc-val"><span id="stat-gx">—</span>, <span id="stat-gy">—</span></div>
+          <div class="sc-sub" id="stat-face">No face</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="sc-icon" style="background:#e8f5e9">😑</div>
+        <div class="sc-body">
+          <div class="sc-label">Blink Status</div>
+          <div class="sc-val" id="stat-blink">0%</div>
+          <div class="sc-sub">EAR: <span id="stat-lear">—</span> / <span id="stat-rear">—</span></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="sc-icon" style="background:#ede7f6">⌨️</div>
+        <div class="sc-body">
+          <div class="sc-label">Keys Typed</div>
+          <div class="sc-val" id="sess-keys">0</div>
+          <div class="sc-sub"><span id="sess-words">0</span> words · <span id="sess-wpm">0</span> WPM</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="sc-icon" style="background:#fce4ec">👁‍🗨</div>
+        <div class="sc-body">
+          <div class="sc-label">Total Blinks</div>
+          <div class="sc-val" id="sess-blinks">0</div>
+          <div class="sc-sub" id="stat-cal">Not calibrated</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content grid -->
+    <div class="content-grid">
+
+      <!-- LEFT: Camera + controls -->
+      <div class="col-left">
+
+        <!-- Camera card -->
+        <div class="card camera-card">
+          <div class="card-header">
+            <span class="card-title">Camera Feed</span>
+            <div class="cam-status-dot" id="cam-status-dot"></div>
+          </div>
+          <div class="camera-viewport">
+            <img id="camera-feed" src="" alt=""/>
+            <div id="no-camera" class="cam-placeholder">
+              <div class="cam-ph-icon">📷</div>
+              <div>Click Start Camera</div>
+            </div>
+            <div id="cam-blink-overlay" class="cam-blink hidden">BLINK ✓</div>
+            <svg id="blink-arc-svg" class="blink-arc hidden" viewBox="0 0 56 56">
+              <circle cx="28" cy="28" r="23" fill="none" stroke="rgba(0,0,0,.1)" stroke-width="4"/>
+              <circle id="blink-arc" cx="28" cy="28" r="23" fill="none" stroke="#f5a623"
+                      stroke-width="4" stroke-dasharray="144" stroke-dashoffset="144"
+                      stroke-linecap="round" transform="rotate(-90 28 28)"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Controls card -->
+        <div class="card" id="settings-panel">
+          <div class="card-header"><span class="card-title">Controls</span></div>
+          <div class="ctrl-list">
+            <div class="ctrl-row">
+              <label>Blink Hold <b id="blink-val">0.35</b>s</label>
+              <input type="range" id="blink-slider" min="0.2" max="1.5" step="0.05" value="0.35"/>
+            </div>
+            <div class="ctrl-row">
+              <label>Dwell Time <b id="dwell-val">1.0</b>s</label>
+              <input type="range" id="dwell-slider" min="0.5" max="4.0" step="0.1" value="1.0"/>
+            </div>
+            <div class="ctrl-row">
+              <label>EAR Threshold <b id="ear-val">0.25</b></label>
+              <input type="range" id="ear-slider" min="0.10" max="0.40" step="0.01" value="0.25"/>
+            </div>
+            <div class="ctrl-row">
+              <label>Text Size <b id="font-val">1.2</b>rem</label>
+              <input type="range" id="font-slider" min="0.9" max="2.5" step="0.1" value="1.2"/>
+            </div>
+          </div>
+          <div class="blink-guide">
+            <div class="bg-row"><span class="bg-chip green">Both eyes</span> Type key</div>
+            <div class="bg-row"><span class="bg-chip orange">Left only</span> Backspace</div>
+            <div class="bg-row"><span class="bg-chip purple">Right only</span> Space</div>
+            <div class="bg-row"><span class="bg-chip blue">Hold 1.5s</span> Speak text</div>
+          </div>
+          <button id="btn-reset-stats" class="outline-btn" style="margin-top:.6rem;width:100%">Reset Session Stats</button>
+        </div>
+
+      </div>
+
+      <!-- CENTER: Keyboard -->
+      <div class="col-center">
+
+        <!-- Text output -->
+        <div class="card output-card">
+          <div class="card-header">
+            <span class="card-title">Typed Text</span>
+            <div class="output-actions">
+              <button id="btn-clear-text" class="icon-btn" title="Clear">🗑</button>
+              <button id="btn-undo-word"  class="icon-btn" title="Undo word">↩</button>
+              <button id="btn-copy"       class="icon-btn" title="Copy">📋</button>
+              <button id="btn-save-text"  class="icon-btn" title="Save to file">💾</button>
+              <button id="btn-speak-text" class="icon-btn accent-btn" title="Speak">🔊</button>
+            </div>
+          </div>
+          <div id="text-output" class="text-output" placeholder="Start typing with your eyes…"></div>
+          <div class="output-footer">
+            <div id="key-history" class="key-history"></div>
+          </div>
+        </div>
+
+        <!-- Word predictions -->
+        <div class="pred-row">
+          <span class="pred-label">Suggestions</span>
+          <button class="pred-btn" data-idx="0"></button>
+          <button class="pred-btn" data-idx="1"></button>
+          <button class="pred-btn" data-idx="2"></button>
+        </div>
+
+        <!-- Mode tabs -->
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="letters">ABC</button>
+          <button class="mode-tab" data-mode="numbers">123</button>
+          <button class="mode-tab" data-mode="emoji">😊 Emoji</button>
+        </div>
+
+        <!-- Keyboard -->
+        <div id="keyboard" class="keyboard" role="group"></div>
+
+        <!-- Gaze cursor -->
+        <div id="gaze-cursor" class="gaze-cursor"></div>
+
+      </div>
+
+      <!-- RIGHT: Heatmap + fixation -->
+      <div class="col-right" id="heatmap-panel">
+        <div class="card" style="flex:0 0 auto">
+          <div class="card-header">
+            <span class="card-title">Gaze Heatmap</span>
+            <div style="display:flex;gap:.3rem">
+              <button id="btn-heatmap"       class="icon-btn">↻</button>
+              <button id="btn-reset-heatmap" class="icon-btn">✕</button>
+            </div>
+          </div>
+          <canvas id="heatmap-canvas" class="heatmap-canvas"></canvas>
+        </div>
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column">
+          <div class="card-header"><span class="card-title">Fixation Log</span></div>
+          <div id="fixation-log" class="fixation-log"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ OVERLAYS ══════════════ -->
+
+<!-- Calibration -->
+<div id="calibration-overlay" class="modal-bg hidden">
+  <div class="cal-scene">
+    <div class="cal-info-box">
+      <h2>Eye Calibration</h2>
+      <p>Look at each dot and blink or press <kbd>Space</kbd></p>
+      <div class="cal-bar"><div id="cal-progress-fill" style="width:0%"></div></div>
+      <p id="cal-progress" class="cal-step">Point 1 / 9</p>
+    </div>
+    <div id="cal-dot" class="cal-dot"></div>
+    <button id="btn-skip-cal" class="pill-btn pill-outline" style="position:absolute;bottom:2rem;right:2rem">Skip</button>
+  </div>
+</div>
+
+<!-- Phrases -->
+<div id="phrases-panel" class="modal-bg hidden">
+  <div class="phrases-modal">
+    <div class="modal-hdr">
+      <h2>💬 Quick Phrases</h2>
+      <button id="btn-close-phrases" class="icon-btn">✕</button>
+    </div>
+    <div id="phrases-list" class="phrases-grid"></div>
+  </div>
+</div>
+
+<!-- System Control Panel -->
+<div id="sysctl-panel" class="modal-bg hidden">
+  <div class="phrases-modal" style="width:min(600px,95vw)">
+    <div class="modal-hdr">
+      <h2>🖥️ PC Eye Control</h2>
+      <button id="btn-close-sysctl" class="icon-btn">✕</button>
+    </div>
+
+    <!-- Mouse toggle -->
+    <div class="sysctl-section">
+      <div class="sysctl-row">
+        <div>
+          <div class="sysctl-title">Eye Mouse Control</div>
+          <div class="sysctl-sub">Gaze moves mouse · Blink = click · Left eye = scroll down · Right eye = scroll up</div>
+        </div>
+        <button id="btn-mouse-toggle" class="pill-btn pill-green">Enable</button>
+      </div>
+      <div id="mouse-status-badge" class="mouse-badge off">● Mouse OFF</div>
+    </div>
+
+    <!-- Window actions -->
+    <div class="sysctl-section">
+      <div class="sysctl-title" style="margin-bottom:.5rem">Window Actions</div>
+      <div class="sysctl-grid">
+        <button class="sysctl-btn" data-action="minimize">⬇ Minimize</button>
+        <button class="sysctl-btn" data-action="maximize">⬆ Maximize</button>
+        <button class="sysctl-btn" data-action="close">✕ Close Window</button>
+        <button class="sysctl-btn" data-action="switch">⇄ Switch Window</button>
+        <button class="sysctl-btn" data-action="desktop">🖥 Show Desktop</button>
+      </div>
+    </div>
+
+    <!-- Open apps -->
+    <div class="sysctl-section">
+      <div class="sysctl-title" style="margin-bottom:.5rem">Open Applications</div>
+      <div class="sysctl-grid">
+        <button class="sysctl-app-btn" data-app="notepad">📝 Notepad</button>
+        <button class="sysctl-app-btn" data-app="calculator">🔢 Calculator</button>
+        <button class="sysctl-app-btn" data-app="browser">🌐 Browser</button>
+        <button class="sysctl-app-btn" data-app="explorer">📁 Explorer</button>
+        <button class="sysctl-app-btn" data-app="paint">🎨 Paint</button>
+      </div>
+    </div>
+
+    <!-- Open windows list -->
+    <div class="sysctl-section">
+      <div class="sysctl-row" style="margin-bottom:.4rem">
+        <div class="sysctl-title">Open Windows</div>
+        <button id="btn-refresh-windows" class="icon-btn">↻</button>
+      </div>
+      <div id="windows-list" class="windows-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Blink flash -->
+<div id="blink-flash" class="blink-flash hidden">✓ BLINK</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- Warm-up -->
+<div id="warmup-banner" class="warmup hidden">
+  ⏳ Keep eyes open — calibrating EAR (2s)…
+</div>
+
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<script src="keyboard.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

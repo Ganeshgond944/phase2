@@ -1,0 +1,265 @@
+"""
+Gaze Engine — MediaPipe iris tracking.
+Uses direct iris position for gaze (the version that was working).
+EAR-based blink detection with auto-threshold.
+"""
+
+import os
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+import cv2
+import numpy as np
+import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
+from pathlib import Path
+from collections import deque
+import time
+import urllib.request
+
+MODEL_ASSET_PATH = Path(__file__).parent / "face_landmarker.task"
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+)
+
+# EAR indices
+LEFT_EAR_IDX  = [33,  160, 158, 133, 153, 144]
+RIGHT_EAR_IDX = [362, 385, 387, 263, 373, 380]
+
+# Iris centre indices
+L_IRIS = 468
+R_IRIS = 473
+
+
+def _download():
+    if not MODEL_ASSET_PATH.exists():
+        print("Downloading MediaPipe face landmarker (~30 MB)…")
+        urllib.request.urlretrieve(MODEL_URL, str(MODEL_ASSET_PATH))
+        print("Downloaded.")
+
+
+def _ear(lm, idx, w, h):
+    p = np.array([[lm[i].x * w, lm[i].y * h] for i in idx])
+    A = np.linalg.norm(p[1] - p[5])
+    B = np.linalg.norm(p[2] - p[4])
+    C = np.linalg.norm(p[0] - p[3])
+    return (A + B) / (2.0 * C + 1e-6)
+
+
+class GazeEngine:
+
+    BLINK_DURATION = 0.35   # seconds eye must stay closed
+    BLINK_COOLDOWN = 0.50   # min gap between blinks
+    EAR_THRESHOLD  = 0.25   # overwritten by auto-calibration
+
+    def __init__(self, screen_w=1920, screen_h=1080, **_):
+        self.screen_w = screen_w
+        self.screen_h = screen_h
+
+        _download()
+        base = mp_python.BaseOptions(model_asset_path=str(MODEL_ASSET_PATH))
+        opts = mp_vision.FaceLandmarkerOptions(
+            base_options=base,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        self.landmarker = mp_vision.FaceLandmarker.create_from_options(opts)
+        print("MediaPipe FaceLandmarker ready.")
+
+        # Gaze smoothing
+        self._gx = deque(maxlen=4)
+        self._gy = deque(maxlen=4)
+
+        # Blink state — track LEFT and RIGHT eye separately
+        self._blink_start   = None
+        self._blink_fired   = False
+        self._blink_last    = 0.0
+        self._left_closed_start  = None
+        self._right_closed_start = None
+        self._left_fired    = False
+        self._right_fired   = False
+
+        # EAR auto-calibration — collect 60 open-eye frames then set threshold
+        self._ear_samples = []
+        self._ear_ready   = False
+
+        # Calibration
+        self.calibration_points = []
+        self.calibration_gaze   = []
+        self.is_calibrated      = False
+        self.cal_transform      = None
+        self._last_norm_x       = 0.5
+        self._last_norm_y       = 0.5
+
+    def _get_landmarks(self, frame):
+        rgb    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        res    = self.landmarker.detect(mp_img)
+        return res.face_landmarks[0] if res.face_landmarks else None
+
+    def process_frame(self, frame):
+        h, w = frame.shape[:2]
+        lm   = self._get_landmarks(frame)
+
+        out = dict(
+            gaze_x=self.screen_w // 2, gaze_y=self.screen_h // 2,
+            blink=False, left_blink=False, right_blink=False,
+            blink_probability=0.0,
+            left_ear=1.0, right_ear=1.0,
+            left_closed=False, right_closed=False,
+            face_detected=False, pitch=0.0, yaw=0.0,
+        )
+
+        if lm is None:
+            return out
+
+        out["face_detected"] = True
+
+        # ── EAR ───────────────────────────────────────────────────────────────
+        le      = _ear(lm, LEFT_EAR_IDX,  w, h)
+        re      = _ear(lm, RIGHT_EAR_IDX, w, h)
+        avg_ear = (le + re) / 2.0
+        out["left_ear"]  = le
+        out["right_ear"] = re
+
+        # ── EAR auto-calibration (first 60 frames, ~2s) ───────────────────────
+        if not self._ear_ready:
+            self._ear_samples.append(avg_ear)
+            if len(self._ear_samples) >= 60:
+                mean_ear = float(np.mean(self._ear_samples))
+                self.EAR_THRESHOLD = mean_ear * 0.75
+                self._ear_ready    = True
+                print(f"EAR calibrated: open={mean_ear:.3f}  "
+                      f"threshold={self.EAR_THRESHOLD:.3f}")
+            # During warm-up: no blinks, return centre
+            out["gaze_x"] = self.screen_w // 2
+            out["gaze_y"] = self.screen_h // 2
+            return out
+
+        # ── Blink detection — both eyes + individual eyes ─────────────────────
+        blink_prob = float(np.clip(1.0 - avg_ear / self.EAR_THRESHOLD, 0.0, 1.0))
+        is_closed  = avg_ear < self.EAR_THRESHOLD
+
+        # Individual eye closed detection
+        left_closed  = le < self.EAR_THRESHOLD
+        right_closed = re < self.EAR_THRESHOLD
+
+        out["blink_probability"] = blink_prob
+        out["left_closed"]  = left_closed
+        out["right_closed"] = right_closed
+
+        now = time.time()
+
+        # Both-eye blink (normal typing)
+        if is_closed:
+            if self._blink_start is None:
+                self._blink_start = now
+            held = (now - self._blink_start) >= self.BLINK_DURATION
+            cool = (now - self._blink_last)  >= self.BLINK_COOLDOWN
+            if held and cool and not self._blink_fired:
+                out["blink"]      = True
+                self._blink_fired = True
+                self._blink_last  = now
+        else:
+            self._blink_start = None
+            self._blink_fired = False
+
+        # Left-eye-only blink (backspace action)
+        if left_closed and not right_closed:
+            if self._left_closed_start is None:
+                self._left_closed_start = now
+            if (now - self._left_closed_start) >= self.BLINK_DURATION and not self._left_fired:
+                if (now - self._blink_last) >= self.BLINK_COOLDOWN:
+                    out["left_blink"] = True
+                    self._left_fired  = True
+                    self._blink_last  = now
+        else:
+            self._left_closed_start = None
+            self._left_fired = False
+
+        # Right-eye-only blink (space action)
+        if right_closed and not left_closed:
+            if self._right_closed_start is None:
+                self._right_closed_start = now
+            if (now - self._right_closed_start) >= self.BLINK_DURATION and not self._right_fired:
+                if (now - self._blink_last) >= self.BLINK_COOLDOWN:
+                    out["right_blink"] = True
+                    self._right_fired  = True
+                    self._blink_last   = now
+        else:
+            self._right_closed_start = None
+            self._right_fired = False
+
+        # ── Gaze — direct iris position (the version that worked) ─────────────
+        # iris.x / iris.y are normalised 0-1 in the full frame
+        # Map with margin so extreme gaze still reaches screen edges
+        try:
+            il = lm[L_IRIS]
+            ir = lm[R_IRIS]
+            iris_x = (il.x + ir.x) / 2.0
+            iris_y = (il.y + ir.y) / 2.0
+
+            # Expand range: typical iris x is 0.3-0.7, y is 0.3-0.6
+            # Remap so those extremes map to screen edges
+            margin_x = 0.25
+            margin_y = 0.20
+            norm_x = (iris_x - margin_x) / (1.0 - 2 * margin_x)
+            norm_y = (iris_y - margin_y) / (1.0 - 2 * margin_y)
+            norm_x = float(np.clip(norm_x, 0.0, 1.0))
+            norm_y = float(np.clip(norm_y, 0.0, 1.0))
+
+            yaw   = (norm_x - 0.5) * np.radians(60)
+            pitch = (norm_y - 0.5) * np.radians(40)
+
+        except (IndexError, AttributeError):
+            norm_x, norm_y = 0.5, 0.5
+            yaw, pitch = 0.0, 0.0
+
+        out["yaw"]   = yaw
+        out["pitch"] = pitch
+        self._last_norm_x = norm_x
+        self._last_norm_y = norm_y
+
+        # Use stable direct iris mapping for cursor movement.
+        # Calibration data is still collected and saved, but it does
+        # not replace the stable gaze mapping.
+        gx = int(norm_x * self.screen_w)
+        gy = int(norm_y * self.screen_h)
+
+        # Smooth
+        self._gx.append(gx)
+        self._gy.append(gy)
+        out["gaze_x"] = int(np.mean(self._gx))
+        out["gaze_y"] = int(np.mean(self._gy))
+
+        return out
+
+    def add_calibration_point(self, screen_x, screen_y, pitch, yaw):
+        self.calibration_points.append([screen_x, screen_y])
+        self.calibration_gaze.append([self._last_norm_x, self._last_norm_y])
+
+    def compute_calibration(self):
+        if len(self.calibration_points) < 4:
+            return False
+        try:
+            G = np.array(self.calibration_gaze,   dtype=np.float64)
+            S = np.array(self.calibration_points, dtype=np.float64)
+            A = np.column_stack([G, np.ones(len(G))])
+            T, _, _, _ = np.linalg.lstsq(A, S, rcond=None)
+            self.cal_transform = T
+            self.is_calibrated = True
+            print(f"Calibration done ({len(G)} points).")
+            return True
+        except Exception as e:
+            print(f"Calibration error: {e}")
+            return False
+
+    def release(self):
+        self.landmarker.close()
+

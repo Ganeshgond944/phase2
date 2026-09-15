@@ -1,0 +1,562 @@
+import os
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+import cv2
+import numpy as np
+import threading
+import time
+import base64
+import json
+import sys
+from pathlib import Path
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from backend.gaze_engine import GazeEngine
+from backend.word_predictor import get_predictions, get_current_word
+from backend.system_control import controller as sys_ctrl
+
+FRONTEND_DIR     = Path(__file__).parent.parent / "frontend"
+CALIBRATION_FILE = Path(__file__).parent.parent / "calibration.json"
+
+app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
+app.config["SECRET_KEY"] = "eyetrack2024"
+CORS(app, origins="*")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    logger=False,
+    engineio_logger=False,
+    ping_timeout=60,
+    ping_interval=25,
+)
+
+# ── State ─────────────────────────────────────────────────────────────────────
+engine       = None
+streaming    = False
+stream_lock  = threading.Lock()
+SCREEN_W     = 1920
+SCREEN_H     = 1080
+heatmap      = np.zeros((108, 192), dtype=np.float32)
+fixation_log = []
+tts_lock     = threading.Lock()
+tts_engine   = None
+session_stats = {"keys_typed":0,"blinks":0,"words":0,"start_time":time.time()}
+
+
+def init_engine():
+    global engine
+    print("Initialising GazeEngine...")
+    engine = GazeEngine(screen_w=SCREEN_W, screen_h=SCREEN_H)
+    print("GazeEngine ready.")
+    _load_calibration()
+
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+@app.route("/")
+def index():
+    return send_from_directory(str(FRONTEND_DIR), "index.html")
+
+@app.route("/<path:filename>")
+def static_files(filename):
+    return send_from_directory(str(FRONTEND_DIR), filename)
+
+
+# ── Stream loop ───────────────────────────────────────────────────────────────
+def stream_loop():
+    global streaming, heatmap, fixation_log
+
+    print("Opening webcam...")
+    cap = None
+    try:
+        c = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
+        if c.isOpened():
+            c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            c.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            c.set(cv2.CAP_PROP_FPS, 30)
+            c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+            for _ in range(10):
+                ret, frame = c.read()
+                if ret and frame is not None and frame.size and float(frame.std()) > 5:
+                    cap = c
+                    print("Camera opened using MJPG.")
+                    break
+
+            if cap is None:
+                c.release()
+    except Exception as e:
+        print("Camera error:", e)
+
+    if cap is None:
+        socketio.emit("error", {"message": "Cannot open webcam."})
+        streaming = False
+        return
+
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+    socketio.emit("camera_ready", {})
+    print("Streaming started.")
+
+    frame_idx  = 0
+    GAZE_EVERY = 1   # emit gaze every frame
+    FRAME_EVERY= 6   # send camera image every 6 frames (~5fps) — reduces bandwidth
+    TARGET_FPS = 30
+    frame_time = 1.0 / TARGET_FPS
+
+    while streaming:
+        t0 = time.time()
+
+        ret, frame = cap.read()
+        if not ret:
+            time.sleep(0.01)
+            continue
+
+        frame = cv2.flip(frame, 1)
+
+        # Process gaze — fast (no CNN, just MediaPipe + EAR)
+        try:
+            result = engine.process_frame(frame)
+        except Exception as e:
+            result = {
+                "gaze_x": SCREEN_W//2, "gaze_y": SCREEN_H//2,
+                "blink": False, "blink_probability": 0.0,
+                "face_detected": False, "left_ear": 1.0, "right_ear": 1.0,
+                "pitch": 0.0, "yaw": 0.0,
+            }
+
+        # Heatmap
+        hx = min(result["gaze_x"] * 192 // max(SCREEN_W,1), 191)
+        hy = min(result["gaze_y"] * 108 // max(SCREEN_H,1), 107)
+        heatmap[hy, hx] += 1.0
+
+        # Fixation log
+        fixation_log.append({
+            "x": result["gaze_x"], "y": result["gaze_y"],
+            "t": time.time(), "blink": result["blink"],
+        })
+        if len(fixation_log) > 300:
+            fixation_log.pop(0)
+
+        if result["blink"]:
+            session_stats["blinks"] += 1
+
+        # System mouse control (if enabled)
+        if sys_ctrl.mouse_enabled:
+            sys_ctrl.process_gesture(
+                result["blink"],
+                result.get("left_blink",  False),
+                result.get("right_blink", False),
+                result["gaze_x"], result["gaze_y"],
+            )
+
+        # Emit gaze every frame — lightweight dict, fast
+        socketio.emit("gaze", {
+            "x":           result["gaze_x"],
+            "y":           result["gaze_y"],
+            "blink":       result["blink"],
+            "left_blink":  result.get("left_blink",  False),
+            "right_blink": result.get("right_blink", False),
+            "blink_prob":  round(result["blink_probability"], 2),
+            "face":        result["face_detected"],
+            "left_ear":    round(result["left_ear"],  3),
+            "right_ear":   round(result["right_ear"], 3),
+            "pitch":       round(result.get("pitch", 0.0), 3),
+            "yaw":         round(result.get("yaw",   0.0), 3),
+            "ear_ready":   engine._ear_ready,
+        })
+
+        # Send camera frame every 6 frames (5fps) — much less bandwidth
+        if frame_idx % FRAME_EVERY == 0:
+            disp = frame.copy()
+            fx = int(result["gaze_x"] * disp.shape[1] / SCREEN_W)
+            fy = int(result["gaze_y"] * disp.shape[0] / SCREEN_H)
+            color = (0, 0, 255) if result["blink"] else (0, 255, 0)
+            cv2.circle(disp, (fx, fy), 10, color, -1)
+            cv2.circle(disp, (fx, fy), 13, (255,255,255), 2)
+            if not result["face_detected"]:
+                cv2.putText(disp, "No face", (10,35),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,165,255), 2)
+            if result["blink"]:
+                cv2.putText(disp, "BLINK", (10,35),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0,0,255), 2)
+            ear_avg = (result["left_ear"] + result["right_ear"]) / 2
+            cv2.putText(disp, f"EAR:{ear_avg:.2f}", (10, disp.shape[0]-8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,255,100), 1)
+            # Low quality JPEG = small payload = fast transfer
+            ok, buf = cv2.imencode(".jpg", disp, [cv2.IMWRITE_JPEG_QUALITY, 55])
+            if ok:
+                socketio.emit("frame", {"data": base64.b64encode(buf).decode()})
+
+        frame_idx += 1
+
+        # Precise FPS throttle
+        elapsed = time.time() - t0
+        sleep_t = frame_time - elapsed
+        if sleep_t > 0:
+            time.sleep(sleep_t)
+
+    cap.release()
+    print("Webcam released.")
+    socketio.emit("camera_stopped", {})
+
+
+# ── API ───────────────────────────────────────────────────────────────────────
+@app.route("/api/start", methods=["POST"])
+def start_stream():
+    global streaming
+    with stream_lock:
+        if streaming:
+            return jsonify({"status": "already_running"})
+        streaming = True
+        threading.Thread(target=stream_loop, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/stop", methods=["POST"])
+def stop_stream():
+    global streaming
+    streaming = False
+    return jsonify({"status": "stopped"})
+
+
+@app.route("/api/status", methods=["GET"])
+def get_status():
+    return jsonify({
+        "streaming":  streaming,
+        "calibrated": engine.is_calibrated if engine else False,
+    })
+
+
+@app.route("/api/predict", methods=["POST"])
+def predict_words():
+    data = request.json or {}
+    text = data.get("text", "")
+    current = get_current_word(text)
+    suggestions = get_predictions(current, n=3)
+    return jsonify({"suggestions": suggestions, "current_word": current})
+
+
+@app.route("/api/speak", methods=["POST"])
+def speak_text():
+    data = request.json or {}
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"status": "empty"})
+
+    def _speak():
+        try:
+            import pyttsx3
+            engine = pyttsx3.init("sapi5")
+            voices = engine.getProperty("voices")
+            if len(voices) > 2:
+                engine.setProperty("voice", voices[2].id)
+            elif voices:
+                engine.setProperty("voice", voices[0].id)
+            engine.setProperty("rate", 150)
+            engine.setProperty("volume", 1.0)
+            engine.say(text)
+            engine.runAndWait()
+            engine.stop()
+        except Exception as e:
+            print(f"TTS error: {e}")
+
+    threading.Thread(target=_speak, daemon=True).start()
+    return jsonify({"status": "speaking"})
+
+
+@app.route("/api/stats", methods=["GET"])
+def get_stats():
+    elapsed = time.time() - session_stats["start_time"]
+    wpm = session_stats["words"] / max(elapsed/60, 0.01)
+    return jsonify({
+        "keys_typed": session_stats["keys_typed"],
+        "blinks":     session_stats["blinks"],
+        "words":      session_stats["words"],
+        "wpm":        round(wpm, 1),
+    })
+
+
+@app.route("/api/stats/key", methods=["POST"])
+def record_key():
+    data = request.json or {}
+    session_stats["keys_typed"] += 1
+    if data.get("is_space"):
+        session_stats["words"] += 1
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/stats/reset", methods=["POST"])
+def reset_stats():
+    session_stats.update({"keys_typed":0,"blinks":0,"words":0,"start_time":time.time()})
+    return jsonify({"status": "reset"})
+
+
+@app.route("/api/calibrate/add", methods=["POST"])
+def calibrate_add():
+    data = request.json
+    engine.add_calibration_point(
+        data["screen_x"], data["screen_y"], data["pitch"], data["yaw"])
+    return jsonify({"points": len(engine.calibration_points)})
+
+
+@app.route("/api/calibrate/compute", methods=["POST"])
+def calibrate_compute():
+    ok = engine.compute_calibration()
+    if ok:
+        _save_calibration()
+    return jsonify({"success": ok, "calibrated": engine.is_calibrated})
+
+
+@app.route("/api/calibrate/reset", methods=["POST"])
+def calibrate_reset():
+    engine.calibration_points.clear()
+    engine.calibration_gaze.clear()
+    engine.is_calibrated = False
+    engine.cal_transform = None
+    return jsonify({"status": "reset"})
+
+
+@app.route("/api/heatmap", methods=["GET"])
+def get_heatmap():
+    mx = heatmap.max()
+    norm = (heatmap / mx).tolist() if mx > 0 else heatmap.tolist()
+    return jsonify({"heatmap": norm, "w": 192, "h": 108})
+
+
+@app.route("/api/heatmap/reset", methods=["POST"])
+def reset_heatmap():
+    global heatmap
+    heatmap = np.zeros((108, 192), dtype=np.float32)
+    return jsonify({"status": "reset"})
+
+
+@app.route("/api/fixations", methods=["GET"])
+def get_fixations():
+    return jsonify({"fixations": fixation_log[-50:]})
+
+
+@app.route("/api/screen_size", methods=["POST"])
+def set_screen_size():
+    global SCREEN_W, SCREEN_H
+    data = request.json
+    SCREEN_W = data.get("width",  1920)
+    SCREEN_H = data.get("height", 1080)
+    if engine:
+        engine.screen_w = SCREEN_W
+        engine.screen_h = SCREEN_H
+    return jsonify({"screen_w": SCREEN_W, "screen_h": SCREEN_H})
+
+
+# ── Eye Mouse ─────────────────────────────────────────────────────────────────
+_eye_mouse_proc = None
+
+@app.route("/api/eye_mouse/start", methods=["POST"])
+def start_eye_mouse():
+    global _eye_mouse_proc
+    import subprocess, sys
+    if _eye_mouse_proc and _eye_mouse_proc.poll() is None:
+        return jsonify({"status": "already_running"})
+    script = Path(__file__).parent.parent / "eye_mouse.py"
+    _eye_mouse_proc = subprocess.Popen(
+        [sys.executable, str(script)],
+        creationflags=0x00000010  # CREATE_NEW_CONSOLE on Windows
+    )
+    return jsonify({"status": "started", "pid": _eye_mouse_proc.pid})
+
+
+@app.route("/api/eye_mouse/stop", methods=["POST"])
+def stop_eye_mouse():
+    global _eye_mouse_proc
+    if _eye_mouse_proc and _eye_mouse_proc.poll() is None:
+        _eye_mouse_proc.terminate()
+        return jsonify({"status": "stopped"})
+    return jsonify({"status": "not_running"})
+
+
+@app.route("/api/blink_threshold", methods=["POST"])
+def set_blink_threshold():
+    data = request.json
+    if engine:
+        engine.BLINK_DURATION = float(data.get("duration",      0.35))
+        engine.EAR_THRESHOLD  = float(data.get("ear_threshold", 0.25))
+        engine.BLINK_COOLDOWN = float(data.get("cooldown",      0.50))
+    return jsonify({"status": "ok"})
+
+
+# ── Save text to file ─────────────────────────────────────────────────────────
+@app.route("/api/save_text", methods=["POST"])
+def save_text():
+    data = request.json or {}
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"status": "empty"})
+    try:
+        import datetime
+        desktop = Path.home() / "Desktop"
+        desktop.mkdir(exist_ok=True)
+        ts       = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = desktop / f"eyetype_{ts}.txt"
+        filepath.write_text(text, encoding="utf-8")
+        return jsonify({"status": "saved", "path": str(filepath)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+
+# ── Phrases ───────────────────────────────────────────────────────────────────
+PHRASES_FILE = Path(__file__).parent.parent / "phrases.json"
+
+DEFAULT_PHRASES = [
+    "I need help",
+    "Yes please",
+    "No thank you",
+    "I am fine",
+    "Please wait",
+    "Call the doctor",
+    "I am in pain",
+    "Water please",
+    "I need rest",
+    "Thank you",
+    "Good morning",
+    "Good night",
+]
+
+
+def _load_phrases():
+    if PHRASES_FILE.exists():
+        try:
+            return json.loads(PHRASES_FILE.read_text())
+        except Exception:
+            pass
+    return DEFAULT_PHRASES
+
+
+def _save_phrases(phrases):
+    PHRASES_FILE.write_text(json.dumps(phrases, indent=2))
+
+
+@app.route("/api/phrases", methods=["GET"])
+def get_phrases():
+    return jsonify({"phrases": _load_phrases()})
+
+
+@app.route("/api/phrases", methods=["POST"])
+def save_phrases():
+    data = request.json or {}
+    phrases = data.get("phrases", [])
+    _save_phrases(phrases)
+    return jsonify({"status": "saved"})
+
+
+def _save_calibration():
+    try:
+        if engine.cal_transform is not None:
+            CALIBRATION_FILE.write_text(json.dumps({
+                "transform": engine.cal_transform.tolist(),
+                "points":    engine.calibration_points,
+                "gaze":      engine.calibration_gaze,
+            }))
+    except Exception as e:
+        print(f"Save cal error: {e}")
+
+
+# ── System Control API ────────────────────────────────────────────────────────
+@app.route("/api/system/mouse/toggle", methods=["POST"])
+def toggle_mouse():
+    enabled = sys_ctrl.toggle_mouse()
+    return jsonify({"mouse_enabled": enabled, "mode": sys_ctrl.mode})
+
+
+@app.route("/api/system/mouse/status", methods=["GET"])
+def mouse_status():
+    return jsonify({
+        "mouse_enabled": sys_ctrl.mouse_enabled,
+        "mode":          sys_ctrl.mode,
+        "screen_w":      sys_ctrl.SCREEN_W if hasattr(sys_ctrl, "SCREEN_W") else 1920,
+        "screen_h":      sys_ctrl.SCREEN_H if hasattr(sys_ctrl, "SCREEN_H") else 1080,
+    })
+
+
+@app.route("/api/system/window/<action>", methods=["POST"])
+def window_action(action):
+    actions = {
+        "minimize": sys_ctrl.minimize_active_window,
+        "maximize": sys_ctrl.maximize_active_window,
+        "close":    sys_ctrl.close_active_window,
+        "switch":   sys_ctrl.switch_window,
+        "desktop":  sys_ctrl.show_desktop,
+    }
+    fn = actions.get(action)
+    if fn:
+        fn()
+        return jsonify({"status": "ok", "action": action})
+    return jsonify({"status": "unknown_action"}), 400
+
+
+@app.route("/api/system/open", methods=["POST"])
+def open_app():
+    data = request.json or {}
+    app_name = data.get("app", "")
+    sys_ctrl.open_app(app_name)
+    return jsonify({"status": "ok", "app": app_name})
+
+
+@app.route("/api/system/windows", methods=["GET"])
+def list_windows():
+    return jsonify({"windows": sys_ctrl.list_windows()})
+
+
+@app.route("/api/system/focus", methods=["POST"])
+def focus_window():
+    data = request.json or {}
+    sys_ctrl.focus_window(data.get("title", ""))
+    return jsonify({"status": "ok"})
+
+
+def _load_calibration():
+    try:
+        if CALIBRATION_FILE.exists():
+            data = json.loads(CALIBRATION_FILE.read_text())
+            engine.cal_transform      = np.array(data["transform"])
+            engine.calibration_points = data["points"]
+            engine.calibration_gaze   = data["gaze"]
+            engine.is_calibrated      = True
+            print("Calibration loaded.")
+    except Exception as e:
+        print(f"Load cal error: {e}")
+
+
+# ── SocketIO ──────────────────────────────────────────────────────────────────
+@socketio.on("connect")
+def on_connect():
+    print(f"Client connected: {request.sid}")
+    emit("status", {"message": "Connected"})
+
+
+@socketio.on("disconnect")
+def on_disconnect():
+    print(f"Client disconnected: {request.sid}")
+
+
+# ── Entry ─────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    init_engine()
+    print("\n→ http://localhost:5000\n")
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=5000,
+        debug=False,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True,
+        log_output=False,
+    )

@@ -1,0 +1,186 @@
+/**
+ * Virtual keyboard — letters, numbers, emoji modes.
+ * Supports dwell + blink selection.
+ */
+
+const KB_MODES = {
+  letters: [
+    ["1","2","3","4","5","6","7","8","9","0","⌫"],
+    ["Q","W","E","R","T","Y","U","I","O","P"],
+    ["A","S","D","F","G","H","J","K","L","↵"],
+    ["Z","X","C","V","B","N","M",",",".","?"],
+    ["CLR","SPACE","CAPS","!"],
+  ],
+  numbers: [
+    ["7","8","9","⌫"],
+    ["4","5","6","↵"],
+    ["1","2","3","SPACE"],
+    ["0",".","@","CLR"],
+    ["+","-","*","/","=","(",")","%","#","$"],
+  ],
+  emoji: [
+    ["😊","😂","❤️","👍","🙏","😢","😮","😡","🎉","✅"],
+    ["👋","🤝","💪","🙌","👏","🤔","😴","🤒","💊","🏥"],
+    ["🌟","🔥","💯","✨","🎯","📞","📧","🏠","🚗","⏰"],
+    ["CLR","SPACE","⌫","↵"],
+  ],
+};
+
+const SPECIAL_KEYS = {
+  "⌫":    { label:"⌫",    action:"backspace", cls:"wide" },
+  "↵":    { label:"↵",    action:"enter",     cls:"wide" },
+  "SPACE":{ label:"SPACE",action:"space",      cls:"widest" },
+  "CLR":  { label:"CLR",  action:"clear",      cls:"clr-key" },
+  "CAPS": { label:"CAPS", action:"caps",        cls:"wide" },
+};
+
+class VirtualKeyboard {
+  constructor(containerId, onKeyPress) {
+    this.container     = document.getElementById(containerId);
+    this.onKeyPress    = onKeyPress;
+    this.keys          = [];
+    this.hoveredKey    = null;
+    this.dwellDuration = 1000;
+    this.dwellProgress = 0;
+    this.dwellInterval = null;
+    this.useDwell      = true;
+    this._resetUntil   = 0;
+    this.mode          = "letters";
+    this.capsOn        = false;
+    this._build();
+  }
+
+  setMode(mode) {
+    this.mode = mode;
+    this._cancelDwell();
+    if (this.hoveredKey) this.hoveredKey.classList.remove("gaze-hover");
+    this.hoveredKey = null;
+    this._build();
+  }
+
+  _build() {
+    this.container.innerHTML = "";
+    this.keys = [];
+    const rows = KB_MODES[this.mode] || KB_MODES.letters;
+    rows.forEach(row => {
+      const rowEl = document.createElement("div");
+      rowEl.className = "key-row";
+      row.forEach(keyVal => {
+        const spec = SPECIAL_KEYS[keyVal];
+        const btn  = document.createElement("button");
+        let label  = spec ? spec.label : keyVal;
+        if (!spec && this.mode === "letters" && this.capsOn) label = label.toUpperCase();
+        if (!spec && this.mode === "letters" && !this.capsOn && /[A-Z]/.test(label))
+          label = label.toLowerCase();
+        btn.className   = "key" + (spec ? ` ${spec.cls}` : "")
+                        + (this.mode === "emoji" ? " emoji-key" : "");
+        btn.textContent = label;
+        btn.dataset.key = keyVal;
+        btn.setAttribute("aria-label", spec ? spec.action : keyVal);
+        const ring = document.createElement("div");
+        ring.className = "dwell-ring";
+        btn.appendChild(ring);
+        btn.addEventListener("click", () => this._handleKey(keyVal));
+        rowEl.appendChild(btn);
+        this.keys.push(btn);
+      });
+      this.container.appendChild(rowEl);
+    });
+  }
+
+  _handleKey(keyVal) {
+    const spec   = SPECIAL_KEYS[keyVal];
+    let   action = spec ? spec.action : keyVal;
+
+    if (action === "caps") {
+      this.capsOn = !this.capsOn;
+      this._build();
+      return;
+    }
+
+    // For letter keys apply caps
+    if (!spec && this.mode === "letters") {
+      action = this.capsOn ? keyVal.toUpperCase() : keyVal.toLowerCase();
+    }
+
+    this.onKeyPress(action);
+
+    const btn = this.keys.find(k => k.dataset.key === keyVal);
+    if (btn) {
+      btn.classList.add("selected");
+      setTimeout(() => btn.classList.remove("selected"), 260);
+    }
+  }
+
+  updateGaze(vx, vy) {
+    if (Date.now() < this._resetUntil) {
+      if (this.hoveredKey) {
+        this.hoveredKey.classList.remove("gaze-hover","dwelling");
+        this.hoveredKey = null;
+      }
+      return;
+    }
+
+    let target = null;
+    for (const btn of this.keys) {
+      const r = btn.getBoundingClientRect();
+      if (vx >= r.left && vx <= r.right && vy >= r.top && vy <= r.bottom) {
+        target = btn; break;
+      }
+    }
+
+    if (target === this.hoveredKey) return;
+
+    this._cancelDwell();
+    if (this.hoveredKey) this.hoveredKey.classList.remove("gaze-hover");
+    this.hoveredKey = target;
+
+    if (target) {
+      target.classList.add("gaze-hover");
+      if (this.useDwell) this._startDwell(target);
+    }
+  }
+
+  _startDwell(btn) {
+    this.dwellProgress = 0;
+    btn.classList.add("dwelling");
+    const ring  = btn.querySelector(".dwell-ring");
+    const steps = this.dwellDuration / 50;
+    this.dwellInterval = setInterval(() => {
+      this.dwellProgress++;
+      const pct = (this.dwellProgress / steps) * 100;
+      if (ring) ring.style.background =
+        `conic-gradient(var(--accent2) ${pct}%,transparent ${pct}%)`;
+      if (this.dwellProgress >= steps) {
+        this._cancelDwell();
+        this._handleKey(btn.dataset.key);
+      }
+    }, 50);
+  }
+
+  _cancelDwell() {
+    if (this.dwellInterval) { clearInterval(this.dwellInterval); this.dwellInterval = null; }
+    if (this.hoveredKey) {
+      this.hoveredKey.classList.remove("dwelling");
+      const ring = this.hoveredKey.querySelector(".dwell-ring");
+      if (ring) ring.style.background = "";
+    }
+    this.dwellProgress = 0;
+  }
+
+  triggerBlink() {
+    if (!this.hoveredKey) return;
+    const key = this.hoveredKey;
+    this._cancelDwell();
+    this._handleKey(key.dataset.key);
+    key.classList.remove("gaze-hover","dwelling");
+    this.hoveredKey  = null;
+    this._resetUntil = Date.now() + 600;
+  }
+
+  getHoveredKey() {
+    return this.hoveredKey ? this.hoveredKey.dataset.key : null;
+  }
+
+  setDwellDuration(ms) { this.dwellDuration = ms; }
+}
