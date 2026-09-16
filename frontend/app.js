@@ -1,10 +1,9 @@
-﻿/**
- * EyeType â€” Full featured eye-tracking keyboard.
+/**
+ * EyeType Ã¢â‚¬â€ Full featured eye-tracking keyboard.
  */
+let SERVER = localStorage.getItem("eyetype_server_url") || (window.location.hostname.endsWith("vercel.app") ? "" : window.location.origin);
 
-const SERVER = window.location.origin;
-
-// â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ State Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 let socket        = null;
 let typedText     = "";
 let isStreaming   = false;
@@ -16,12 +15,14 @@ let gazeVX        = -100;
 let gazeVY        = -100;
 let targetGazeVX  = -100;
 let targetGazeVY  = -100;
-const CURSOR_SMOOTHING = 0.16;
+const CURSOR_SMOOTHING = 0.24;
 let predictions   = ["","",""];
 let phrases       = [];
 let keyHistory    = [];
 let _frameCount   = 0;
 let _longBlinkStart = null;
+let _longBlinkTriggered = false;
+let _lastSpeakTime = 0;
 let _earReady     = false;
 
 const CAL_POINTS = [
@@ -30,7 +31,7 @@ const CAL_POINTS = [
   [.1,.9],[.5,.9],[.9,.9],
 ];
 
-// â”€â”€ DOM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ DOM Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const $connLabel    = document.getElementById("conn-label");
 const $earPill      = document.getElementById("ear-badge");
 const $earLabel     = document.getElementById("ear-label");
@@ -45,6 +46,99 @@ const $btnClearText = document.getElementById("btn-clear-text");
 const $btnUndoWord  = document.getElementById("btn-undo-word");
 const $btnCopy      = document.getElementById("btn-copy");
 const $btnPaste     = document.getElementById("btn-paste");
+
+const $btnVoice = document.getElementById("btn-voice");
+
+let voiceRecognition = null;
+let voiceListening = false;
+
+function startVoiceInput() {
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    showToast("Speech recognition is not supported in this browser");
+    return;
+  }
+
+  if (voiceListening) {
+    if (voiceRecognition) voiceRecognition.stop();
+    return;
+  }
+
+  voiceRecognition = new SpeechRecognition();
+  voiceRecognition.continuous = false;
+  voiceRecognition.interimResults = false;
+
+  const languageSelect = document.getElementById("language-select");
+  const selectedLanguage = languageSelect ? languageSelect.value : "english";
+
+  const voiceLanguages = {
+    english: "en-IN",
+    kannada: "kn-IN",
+    telugu: "te-IN",
+    hindi: "hi-IN",
+    tamil: "ta-IN",
+    malayalam: "ml-IN"
+  };
+
+  voiceRecognition.lang = voiceLanguages[selectedLanguage] || "en-IN";
+
+  voiceRecognition.onstart = () => {
+    voiceListening = true;
+    if ($btnVoice) {
+      $btnVoice.classList.add("accent-btn");
+      $btnVoice.title = "Stop speaking";
+    }
+    showToast("Listening...");
+  };
+
+  voiceRecognition.onresult = (event) => {
+    let spokenText = "";
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        spokenText += event.results[i][0].transcript;
+      }
+    }
+
+    spokenText = spokenText.trim();
+
+    if (spokenText) {
+      if (typedText && !typedText.endsWith(" ")) {
+        typedText += " ";
+      }
+
+      typedText += spokenText;
+      updateTextDisplay();
+      updatePredictions();
+      showToast("Speech typed");
+    }
+  };
+
+  voiceRecognition.onerror = (event) => {
+    console.log("Speech recognition error:", event.error);
+
+    if (event.error === "not-allowed") {
+      showToast("Microphone permission denied");
+    } else if (event.error === "no-speech") {
+      showToast("No speech detected");
+    } else {
+      showToast("Speech recognition error");
+    }
+  };
+
+  voiceRecognition.onend = () => {
+    voiceListening = false;
+
+    if ($btnVoice) {
+      $btnVoice.classList.remove("accent-btn");
+      $btnVoice.title = "Speak to type";
+    }
+  };
+
+  voiceRecognition.start();
+}
 const $btnSaveText  = document.getElementById("btn-save-text");
 const $btnSpeakText = document.getElementById("btn-speak-text");
 const $btnHeatmap   = document.getElementById("btn-heatmap");
@@ -79,17 +173,72 @@ const $blinkArcSvg  = document.getElementById("blink-arc-svg");
 const $blinkArc     = document.getElementById("blink-arc");
 const $camStatusDot = document.getElementById("cam-status-dot");
 
-// â”€â”€ Cursor animation loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Cursor animation loop Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 (function loop() {
   $cursor.style.left = gazeVX + "px";
   $cursor.style.top  = gazeVY + "px";
   requestAnimationFrame(loop);
 })();
 
-// â”€â”€ Keyboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Keyboard Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Language management & shortcuts ─────────────────────────────────────────
+const LANGUAGES = [
+  { code: "english",   name: "English",   native: "English",  voice: "en-IN" },
+  { code: "kannada",   name: "Kannada",   native: "ಕನ್ನಡ",    voice: "kn-IN" },
+  { code: "telugu",    name: "Telugu",    native: "తెలుగు",   voice: "te-IN" },
+  { code: "hindi",     name: "Hindi",     native: "हिन्दी",    voice: "hi-IN" },
+  { code: "tamil",     name: "Tamil",     native: "தமிழ்",    voice: "ta-IN" },
+  { code: "malayalam", name: "Malayalam", native: "മലയാളം",  voice: "ml-IN" }
+];
+
+function setLanguage(langCode, showNotification = true) {
+  const select = document.getElementById("language-select");
+  const langObj = LANGUAGES.find(l => l.code === langCode) || LANGUAGES[0];
+
+  if (select && select.value !== langObj.code) {
+    select.value = langObj.code;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  const btn = document.getElementById("language-gaze-button");
+  if (btn && btn.childNodes[0]) {
+    btn.childNodes[0].nodeValue = langObj.native + " ";
+  }
+
+  if (typeof voiceRecognition !== "undefined" && voiceRecognition) {
+    voiceRecognition.lang = langObj.voice;
+  }
+
+  if (typeof keyboard !== "undefined" && keyboard && keyboard.setLanguage) {
+    keyboard.setLanguage(langObj.code);
+  }
+
+  if (typeof updatePredictions === "function") {
+    updatePredictions();
+  }
+
+  if (showNotification) {
+    showToast(`🌐 Language: ${langObj.name} (${langObj.native}) [Alt+L]`);
+  }
+}
+
+function cycleLanguage(showNotification = true) {
+  const select = document.getElementById("language-select");
+  const current = (select ? select.value : (typeof keyboard !== "undefined" && keyboard ? keyboard.language : "english")) || "english";
+  const currentIndex = LANGUAGES.findIndex(l => l.code === current);
+  const nextIndex = (currentIndex + 1) % LANGUAGES.length;
+  const nextLang = LANGUAGES[nextIndex];
+  setLanguage(nextLang.code, showNotification);
+  return nextLang;
+}
+
 const keyboard = new VirtualKeyboard("keyboard", handleKeyAction);
 
 async function handleKeyAction(action) {
+  if (action === 'lang') {
+    cycleLanguage();
+    return;
+  }
   if (action === 'paste') {
     try {
       const clip = await navigator.clipboard.readText();
@@ -126,7 +275,7 @@ function addKeyHistory(ch) {
   keyHistory.push(ch);
   if (keyHistory.length > 8) keyHistory.shift();
   $keyHistory.innerHTML = keyHistory
-    .map(c => `<span>${c === " " ? "Â·" : c}</span>`).join("");
+    .map(c => `<span>${c === " " ? "Ã‚Â·" : c}</span>`).join("");
 }
 
 function updateTextDisplay() {
@@ -135,7 +284,7 @@ function updateTextDisplay() {
   $textOut.classList.toggle("has-text", typedText.length > 0);
 }
 
-// â”€â”€ Keyboard mode tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Keyboard mode tabs Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 document.querySelectorAll(".mode-tab").forEach(tab => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".mode-tab").forEach(t => t.classList.remove("active"));
@@ -200,7 +349,7 @@ function updateSidebarGaze(vx, vy) {
     languageMenu.style.display !== "none";
 
   const items = document.querySelectorAll(
-    '[id^="nav-"], #language-gaze-button, .language-option'
+    '[id^="nav-"], #language-gaze-button, .language-option, #btn-theme'
   );
 
   let target = null;
@@ -239,23 +388,11 @@ function updateSidebarGaze(vx, vy) {
           languageMenu.style.display === "none" ? "block" : "none";
 
       } else if (target.classList.contains("language-option")) {
-
-        const languageSelect =
-          document.getElementById("language-select");
-
-        const language =
-          target.getAttribute("data-language");
-
-        languageSelect.value = language;
-        languageSelect.dispatchEvent(
-          new Event("change", { bubbles: true })
-        );
-
-        languageButton.childNodes[0].nodeValue =
-          target.textContent.trim() + " ";
-
+        const language = target.getAttribute("data-language");
+        if (language) {
+          setLanguage(language);
+        }
         languageMenu.style.display = "none";
-
       } else {
         target.click();
       }
@@ -265,9 +402,48 @@ function updateSidebarGaze(vx, vy) {
   }, keyboard.dwellDuration);
 }
 
+// ── Language selector click & shortcut handlers ─────────────────────────────
+const $langGazeBtn = document.getElementById("language-gaze-button");
+const $langGazeMenu = document.getElementById("language-gaze-menu");
+
+if ($langGazeBtn && $langGazeMenu) {
+  $langGazeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    $langGazeMenu.style.display = $langGazeMenu.style.display === "none" ? "block" : "none";
+  });
+
+  document.querySelectorAll(".language-option").forEach(opt => {
+    opt.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const language = opt.getAttribute("data-language");
+      if (language) {
+        setLanguage(language);
+      }
+      $langGazeMenu.style.display = "none";
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#language-gaze-selector")) {
+      $langGazeMenu.style.display = "none";
+    }
+  });
+}
+
+// Global hotkey: Alt + L to cycle languages
+window.addEventListener("keydown", (e) => {
+  if (
+    (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "l" || e.key === "L" || e.code === "KeyL")) ||
+    (e.altKey && e.ctrlKey && (e.key === "l" || e.key === "L" || e.code === "KeyL"))
+  ) {
+    e.preventDefault();
+    cycleLanguage();
+  }
+});
 
 
-// â”€â”€ Word predictions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// Ã¢â€â‚¬Ã¢â€â‚¬ Word predictions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 let _predTimer = null;
 function updatePredictions() {
   clearTimeout(_predTimer);
@@ -302,10 +478,24 @@ function applyPrediction(idx) {
   playClick();
 }
 
-// â”€â”€ Socket â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€ â‚¬Ã¢â€ â‚¬ Socket Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
 function initSocket() {
-  socket = io({ transports:["websocket","polling"], reconnection:true,
-                reconnectionDelay:1000, reconnectionAttempts:20 });
+  if (!SERVER) {
+    setStatus("disconnected", "Set Backend URL");
+    return;
+  }
+  try {
+    socket = io(SERVER, {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 20
+    });
+  } catch (err) {
+    console.error("Socket init error:", err);
+    setStatus("disconnected", "Init Error");
+    return;
+  }
 
   socket.on("connect", () => { console.log("SOCKET CONNECTED:", socket.id);
     setStatus("connected","Connected");
@@ -341,21 +531,21 @@ function initSocket() {
     if (!isStreaming) return;
     _frameCount++;
 
-    // EAR ready indicator
+    // Eyes ready indicator
     if (data.ear_ready && !_earReady) {
       _earReady = true;
       if ($earPill)  $earPill.className  = "ear-badge ready";
-      if ($earLabel) $earLabel.textContent = "EAR Ready âœ“";
+      if ($earLabel) $earLabel.textContent = "Eyes Ready ✓";
       $warmup.classList.add("hidden");
     }
 
     if (!data.face) {
       if (_frameCount % 20 === 0)
-        document.getElementById("stat-face").textContent = "âœ—";
+        document.getElementById("stat-face").textContent = "✗";
       return;
     }
 
-    // Map gaze â†’ viewport
+    // Map gaze Ã¢â€ â€™ viewport
     // Expand gaze range so cursor can reach the full page.
       const GAZE_GAIN_X = 1.8;
       const GAZE_GAIN_Y = 1.8;
@@ -410,24 +600,25 @@ updateModeTabGaze(gazeVX, gazeVY);
       document.getElementById("stat-blink").textContent = (data.blink_prob*100).toFixed(0)+"%";
       document.getElementById("stat-gx").textContent    = data.x;
       document.getElementById("stat-gy").textContent    = data.y;
-      document.getElementById("stat-face").textContent  = "âœ“";
+      document.getElementById("stat-face").textContent  = "✓";
     }
 
     lastPitch = data.pitch || 0;
     lastYaw   = data.yaw   || 0;
 
-    // Long blink (1.5s) â†’ speak text
+    // Long blink (1.5s) Ã¢â€ â€™ speak text
     if (data.blink_prob > 0.8) {
       if (!_longBlinkStart) _longBlinkStart = Date.now();
-      if (Date.now() - _longBlinkStart > 1500) {
+      if (!_longBlinkTriggered && (Date.now() - _longBlinkStart > 1500)) {
         speakText();
-        _longBlinkStart = null;
+        _longBlinkTriggered = true;
       }
     } else {
       _longBlinkStart = null;
+      _longBlinkTriggered = false;
     }
 
-    // Both-eye blink â†’ type key
+    // Both-eye blink Ã¢â€ â€™ type key
     if (data.blink) {
       const predIdx = getHoveredPrediction();
       const phraseIdx = getHoveredPhrase();
@@ -439,26 +630,26 @@ updateModeTabGaze(gazeVX, gazeVY);
       if (isCalibrating) recordCalPoint();
     }
 
-    // Left-eye-only blink â†’ backspace
+    // Left-eye-only blink Ã¢â€ â€™ backspace
     if (false) {
       handleKeyAction("backspace");
-      showToast("â† Backspace");
+      showToast("Ã¢â€ Â Backspace");
     }
 
-    // Right-eye-only blink â†’ space
+    // Right-eye-only blink Ã¢â€ â€™ space
     if (data.right_blink) {
       handleKeyAction("space");
-      showToast("Space â†’");
+      showToast("Space Ã¢â€ â€™");
     }
   });
 
   socket.on("error", data => {
-    $noCam.textContent   = "âš  " + data.message;
+    $noCam.textContent   = "Ã¢Å¡Â  " + data.message;
     $noCam.style.display = "";
   });
 }
 
-// â”€â”€ Blink arc â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Blink arc Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function updateBlinkArc(prob) {
   if (prob > 0.3) {
     $blinkArcSvg.classList.remove("hidden");
@@ -470,32 +661,96 @@ function updateBlinkArc(prob) {
   }
 }
 
-// â”€â”€ Camera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Camera Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+let clientStream   = null;
+let clientInterval = null;
+
 async function startCamera() {
+  if (!SERVER) {
+    alert("Please enter your Backend Server URL in Settings and click Connect.");
+    return;
+  }
   try {
     setStatus("streaming","Startingâ€¦");
-    await fetch(`${SERVER}/api/start`,{method:"POST"});
     isStreaming        = true;
     $btnStart.disabled = true;
     $btnStop.disabled  = false;
     setStatus("streaming","Streaming");
     $noCam.textContent = "Opening cameraâ€¦";
     if ($camStatusDot) $camStatusDot.className = "cam-status-dot live";
-    // Show warm-up banner
+
+    const clientVideo  = document.getElementById("client-webcam");
+    const clientCanvas = document.getElementById("client-canvas");
+    let usingClientCam = false;
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        clientStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+        });
+        if (clientVideo && clientStream) {
+          clientVideo.srcObject = clientStream;
+          await clientVideo.play();
+          usingClientCam = true;
+          startClientStreamingLoop(clientVideo, clientCanvas);
+        }
+      } catch (camErr) {
+        console.warn("Browser webcam fallback to server:", camErr);
+      }
+    }
+
+    if (!usingClientCam) {
+      await fetch(`${SERVER}/api/start`,{method:"POST"});
+    }
+
     $warmup.classList.remove("hidden");
     setTimeout(() => $warmup.classList.add("hidden"), 4000);
   } catch(e) {
     setStatus("disconnected","Error");
-    alert("Cannot reach server. Open http://localhost:5000");
+    alert("Cannot reach server at " + (SERVER || "backend URL"));
+    isStreaming        = false;
+    $btnStart.disabled = false;
+    $btnStop.disabled  = true;
   }
 }
 
+function startClientStreamingLoop(videoEl, canvasEl) {
+  if (clientInterval) clearInterval(clientInterval);
+  if (!videoEl || !canvasEl) return;
+  const ctx = canvasEl.getContext("2d");
+  canvasEl.width  = 640;
+  canvasEl.height = 480;
+
+  clientInterval = setInterval(() => {
+    if (!isStreaming || !socket || !socket.connected) return;
+    if (videoEl.readyState >= 2) {
+      ctx.drawImage(videoEl, 0, 0, 640, 480);
+      const frameData = canvasEl.toDataURL("image/jpeg", 0.5);
+      socket.emit("client_frame", { data: frameData, flip: true });
+    }
+  }, 66);
+}
+
 async function stopCamera() {
-  await fetch(`${SERVER}/api/stop`,{method:"POST"}).catch(()=>{});
+  if (clientInterval) {
+    clearInterval(clientInterval);
+    clientInterval = null;
+  }
+  if (clientStream) {
+    clientStream.getTracks().forEach(track => track.stop());
+    clientStream = null;
+  }
+  if (SERVER) {
+    await fetch(`${SERVER}/api/stop`,{method:"POST"}).catch(()=>{});
+  }
   isStreaming        = false;
   $btnStart.disabled = false;
   $btnStop.disabled  = true;
   $cursor.style.display = "none";
+  if ($camStatusDot) $camStatusDot.className = "cam-status-dot";
+  $camFeed.classList.remove("active");
+  $noCam.style.display = "";
+  $noCam.textContent   = "Camera stopped";
   setStatus("connected","Connected");
 }
 
@@ -530,8 +785,8 @@ document.getElementById("nav-eyemouse").addEventListener("click", async () => {
       const data = await res.json();
       _eyeMouseRunning = true;
       document.getElementById("nav-eyemouse").style.color = "var(--accent2)";
-      document.getElementById("nav-eyemouse").querySelector("span:last-child").textContent = "Eye Mouse âœ“";
-      showToast("ðŸ–±ï¸ Eye Mouse started! Blink to click.");
+      document.getElementById("nav-eyemouse").querySelector("span:last-child").textContent = "Eye Mouse Ã¢Å“â€œ";
+      showToast("Ã°Å¸â€“Â±Ã¯Â¸Â  Eye Mouse started! Blink to click.");
     } catch(e) { showToast("Failed to start Eye Mouse"); }
   } else {
     try {
@@ -539,12 +794,12 @@ document.getElementById("nav-eyemouse").addEventListener("click", async () => {
       _eyeMouseRunning = false;
       document.getElementById("nav-eyemouse").style.color = "";
       document.getElementById("nav-eyemouse").querySelector("span:last-child").textContent = "Eye Mouse";
-      showToast("ðŸ–±ï¸ Eye Mouse stopped.");
+      showToast("Ã°Å¸â€“Â±Ã¯Â¸Â  Eye Mouse stopped.");
     } catch(e) {}
   }
 });
 
-// â”€â”€ Text actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Text actions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 $btnClearText.addEventListener("click", () => {
   typedText = ""; keyHistory = [];
   updateTextDisplay(); updatePredictions();
@@ -579,14 +834,14 @@ async function pasteText() {
 function copyText() {
   if (!typedText.trim()) return;
   navigator.clipboard.writeText(typedText)
-    .then(() => showToast("ðŸ“‹ Copied!"))
+    .then(() => showToast("Ã°Å¸â€œâ€¹ Copied!"))
     .catch(() => {
       const ta = document.createElement("textarea");
       ta.value = typedText;
       document.body.appendChild(ta);
       ta.select(); document.execCommand("copy");
       document.body.removeChild(ta);
-      showToast("ðŸ“‹ Copied!");
+      showToast("Ã°Å¸â€œâ€¹ Copied!");
     });
 }
 
@@ -598,21 +853,60 @@ async function saveText() {
       body: JSON.stringify({text: typedText}),
     });
     const data = await res.json();
-    showToast(data.status === "saved" ? "ðŸ’¾ Saved to Desktop!" : "Save failed");
+    showToast(data.status === "saved" ? "Ã°Å¸â€™Â¾ Saved to Desktop!" : "Save failed");
   } catch(e) { showToast("Save error"); }
 }
 
-function speakText() {
+async function speakText() {
   const text = typedText.trim();
   if (!text) return;
-  fetch(`${SERVER}/api/speak`,{
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({text, language: document.getElementById("language-select").value || "english"}),
-  }).catch(()=>{});
-  showToast("ðŸ”Š Speakingâ€¦");
+
+  const now = Date.now();
+  if (now - _lastSpeakTime < 800) return; // Prevent duplicate rapid triggers
+  _lastSpeakTime = now;
+
+  const lang = (document.getElementById("language-select") ? document.getElementById("language-select").value : "english").toLowerCase();
+
+  showToast("🔊 Speaking…");
+
+  // Single audio channel: Send to backend /api/speak (unified Google TTS tone for all languages)
+  if (SERVER) {
+    try {
+      await fetch(`${SERVER}/api/speak`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, language: lang }),
+      });
+      return; // Handled exclusively by server, do NOT play in browser!
+    } catch (err) {
+      console.warn("Backend TTS failed, falling back to browser Web Speech:", err);
+    }
+  }
+
+  // Fallback to browser SpeechSynthesis ONLY if backend is completely unreachable
+  if ('speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      const langMap = {
+        english: 'en-IN',
+        kannada: 'kn-IN',
+        telugu: 'te-IN',
+        hindi: 'hi-IN',
+        tamil: 'ta-IN',
+        malayalam: 'ml-IN'
+      };
+      utterance.lang = langMap[lang] || 'en-IN';
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    } catch (speechErr) {
+      console.warn("Browser speech synthesis error:", speechErr);
+    }
+  }
 }
 
-// â”€â”€ Sliders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Sliders Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 $blinkSlider.addEventListener("input", () => {
   $blinkVal.textContent = parseFloat($blinkSlider.value).toFixed(2);
   sendThreshold();
@@ -642,13 +936,43 @@ function sendThreshold() {
   }).catch(()=>{});
 }
 
-// â”€â”€ Theme â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$btnTheme.addEventListener("click", () => {
-  document.body.classList.toggle("light");
-  $btnTheme.textContent = document.body.classList.contains("light") ? "ðŸŒ™" : "â˜€ï¸";
-});
+// Ã¢â€ â‚¬Ã¢â€ â‚¬ Theme Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
+function initTheme() {
+  const saved = localStorage.getItem("eyetype_theme") || "dark";
+  if (saved === "dark") {
+    document.body.classList.add("dark");
+  } else {
+    document.body.classList.remove("dark");
+  }
+  updateThemeUI();
+}
 
-// â”€â”€ System Control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function updateThemeUI() {
+  const isDark = document.body.classList.contains("dark");
+  const icon = document.getElementById("theme-icon");
+  if (icon) {
+    icon.textContent = isDark ? "☀️" : "🌙";
+  } else if ($btnTheme) {
+    $btnTheme.textContent = isDark ? "☀️" : "🌙";
+  }
+  if ($btnTheme) {
+    $btnTheme.title = isDark ? "Switch to light mode" : "Switch to dark mode";
+  }
+}
+
+if ($btnTheme) {
+  $btnTheme.addEventListener("click", () => {
+    document.body.classList.toggle("dark");
+    const isDark = document.body.classList.contains("dark");
+    localStorage.setItem("eyetype_theme", isDark ? "dark" : "light");
+    updateThemeUI();
+    showToast(isDark ? "🌙 Dark mode enabled" : "☀️ Light mode enabled");
+  });
+}
+
+initTheme();
+
+// Ã¢â€ â‚¬Ã¢â€ â‚¬ System Control Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
 const $sysctlPanel = document.getElementById("sysctl-panel");
 const $mouseToggle = document.getElementById("btn-mouse-toggle");
 const $mouseBadge  = document.getElementById("mouse-status-badge");
@@ -669,11 +993,11 @@ $mouseToggle.addEventListener("click", async () => {
   const data = await res.json();
   mouseEnabled = data.mouse_enabled;
   updateMouseBadge();
-  showToast(mouseEnabled ? "ðŸ–¥ Eye Mouse ON â€” blink to click!" : "ðŸ–¥ Eye Mouse OFF");
+  showToast(mouseEnabled ? "Ã°Å¸â€“Â¥ Eye Mouse ON Ã¢â‚¬â€ blink to click!" : "Ã°Å¸â€“Â¥ Eye Mouse OFF");
 });
 
 function updateMouseBadge() {
-  $mouseBadge.textContent = mouseEnabled ? "â— Mouse ON" : "â— Mouse OFF";
+  $mouseBadge.textContent = mouseEnabled ? "Ã¢â€”Â Mouse ON" : "Ã¢â€”Â Mouse OFF";
   $mouseBadge.className   = "mouse-badge " + (mouseEnabled ? "on" : "off");
   $mouseToggle.textContent = mouseEnabled ? "Disable" : "Enable";
   $mouseToggle.className   = "pill-btn " + (mouseEnabled ? "pill-red" : "pill-green");
@@ -684,7 +1008,7 @@ document.querySelectorAll(".sysctl-btn").forEach(btn => {
   btn.addEventListener("click", async () => {
     const action = btn.dataset.action;
     await fetch(`${SERVER}/api/system/window/${action}`, {method:"POST"}).catch(()=>{});
-    showToast(`âœ“ ${btn.textContent.trim()}`);
+    showToast(`Ã¢Å“â€œ ${btn.textContent.trim()}`);
   });
 });
 
@@ -695,7 +1019,7 @@ document.querySelectorAll(".sysctl-app-btn").forEach(btn => {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({app: btn.dataset.app}),
     }).catch(()=>{});
-    showToast(`Opening ${btn.textContent.trim()}â€¦`);
+    showToast(`Opening ${btn.textContent.trim()}Ã¢â‚¬Â¦`);
   });
 });
 
@@ -722,7 +1046,7 @@ async function refreshWindows() {
   } catch(e) {}
 }
 
-// â”€â”€ Calibration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Calibration Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function showCalPoint() {
   if (calPointIdx >= CAL_POINTS.length) { finishCalibration(); return; }
@@ -752,8 +1076,8 @@ async function finishCalibration() {
   try {
     const res  = await fetch(`${SERVER}/api/calibrate/compute`,{method:"POST"});
     const data = await res.json();
-    document.getElementById("stat-cal").textContent = data.calibrated ? "Yes âœ“" : "Failed";
-    showToast(data.calibrated ? "âŠ• Calibrated!" : "Calibration failed");
+    document.getElementById("stat-cal").textContent = data.calibrated ? "Yes Ã¢Å“â€œ" : "Failed";
+    showToast(data.calibrated ? "Ã¢Å â€¢ Calibrated!" : "Calibration failed");
   } catch(e) {}
 }
 
@@ -768,7 +1092,7 @@ document.addEventListener("keydown", e => {
   }
 });
 
-// â”€â”€ Phrases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Phrases Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 $btnPhrases.addEventListener("click", openPhrases);
 document.getElementById("btn-close-phrases").addEventListener("click", () => {
   $phrasesPanel.classList.add("hidden");
@@ -820,7 +1144,7 @@ function getHoveredPhrase() {
   return items.findIndex(b => b.classList.contains("gaze-hover"));
 }
 
-// â”€â”€ Prediction hover â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Prediction hover Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 let _predHovered = null;
 let _predDwellTimer = null;
 
@@ -869,7 +1193,7 @@ function getHoveredPrediction() {
   return -1;
 }
 
-// â”€â”€ Heatmap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Heatmap Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 // ?? Universal gaze control ????????????????????????????????????????????????????
 // Allows the gaze cursor to select normal interactive controls across the page.
@@ -1079,7 +1403,7 @@ $btnResetHeat.addEventListener("click", async () => {
 });
 setInterval(() => { if (isStreaming) fetchHeatmap(); }, 3000);
 
-// â”€â”€ Session stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Session stats Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 setInterval(async () => {
   if (!isStreaming) return;
   try {
@@ -1098,18 +1422,18 @@ $btnResetStat.addEventListener("click", async () => {
     .forEach(id => document.getElementById(id).textContent = "0");
 });
 
-// â”€â”€ Fixation log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Fixation log Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 setInterval(async () => {
   if (!isStreaming) return;
   try {
     const res  = await fetch(`${SERVER}/api/fixations`);
     const data = await res.json();
     $fixLog.innerHTML = data.fixations.slice(-8).reverse()
-      .map(f => `<div>${f.blink?"ðŸ‘ ":"Â· "}(${f.x},${f.y})</div>`).join("");
+      .map(f => `<div>${f.blink?"Ã°Å¸â€˜Â ":"Ã‚Â· "}(${f.x},${f.y})</div>`).join("");
   } catch(e) {}
 }, 2000);
 
-// â”€â”€ Sound feedback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Sound feedback Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 let _audioCtx = null;
 function playClick() {
   try {
@@ -1125,7 +1449,7 @@ function playClick() {
   } catch(e) {}
 }
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function setStatus(cls, text) {
   if ($connLabel) $connLabel.textContent = text;
 }
@@ -1143,13 +1467,59 @@ function showToast(msg) {
   setTimeout(() => $toast.classList.add("hidden"), 1800);
 }
 
-// â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function setupServerConfig() {
+  const $serverInput = document.getElementById("server-url-input");
+  const $btnSave     = document.getElementById("btn-save-server");
+  const $serverPill  = document.getElementById("server-status-pill");
+
+  if ($serverInput && SERVER) {
+    $serverInput.value = SERVER;
+  }
+
+  if ($serverPill) {
+    if (localStorage.getItem("eyetype_server_url")) {
+      $serverPill.textContent = "Custom";
+      $serverPill.style.color = "#10b981";
+    } else if (window.location.hostname.endsWith("vercel.app")) {
+      $serverPill.textContent = "Needs URL";
+      $serverPill.style.color = "#f59e0b";
+    } else {
+      $serverPill.textContent = "Local";
+      $serverPill.style.color = "#3b82f6";
+    }
+  }
+
+  if ($btnSave && $serverInput) {
+    $btnSave.addEventListener("click", () => {
+      const val = $serverInput.value.trim().replace(/\/+$/, "");
+      if (!val) {
+        localStorage.removeItem("eyetype_server_url");
+        SERVER = window.location.hostname.endsWith("vercel.app") ? "" : window.location.origin;
+        showToast("Reset server URL");
+      } else {
+        localStorage.setItem("eyetype_server_url", val);
+        SERVER = val;
+        showToast("Connecting to: " + val);
+      }
+      if ($serverPill) {
+        $serverPill.textContent = val ? "Custom" : (window.location.hostname.endsWith("vercel.app") ? "Needs URL" : "Local");
+        $serverPill.style.color = val ? "#10b981" : "#3b82f6";
+      }
+      if (socket) {
+        try { socket.disconnect(); } catch(e){}
+      }
+      initSocket();
+    });
+  }
+}
+
+// Ã¢â€â‚¬Ã¢â€â‚¬ Boot Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 $cursor.style.display = "none";
 $btnStop.disabled     = true;
+setupServerConfig();
 updatePredictions();
 initSocket();
 
 
-
-
+if ($btnVoice) $btnVoice.addEventListener("click", startVoiceInput);
 

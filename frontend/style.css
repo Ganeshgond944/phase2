@@ -328,6 +328,34 @@ input[type=range]{
 .key.wide{max-width:72px}
 .key.widest{max-width:230px}
 .key.clr-key{max-width:64px;background:rgba(240,80,96,.08);color:var(--red);border-color:rgba(240,80,96,.2)}
+.key.lang-key{
+  max-width:92px;
+  background:rgba(74,144,217,.12);
+  color:var(--blue);
+  border-color:rgba(74,144,217,.3);
+  font-size:.78rem;
+  font-weight:700;
+  letter-spacing:.2px;
+}
+.key.lang-key:hover,.key.lang-key.gaze-hover{
+  background:var(--blue);
+  color:#fff;
+  border-color:var(--blue);
+  box-shadow:0 0 0 3px rgba(74,144,217,.25),0 4px 16px rgba(74,144,217,.4);
+}
+.lang-shortcut-badge{
+  font-size:.65rem;
+  font-weight:700;
+  color:var(--accent);
+  background:rgba(245,166,35,.12);
+  border:1px solid rgba(245,166,35,.3);
+  border-radius:4px;
+  padding:.12rem .4rem;
+  letter-spacing:.5px;
+  margin-left:.4rem;
+  cursor:help;
+  user-select:none;
+}
 .key.emoji-key{font-size:1rem}
 
 .key:hover{
@@ -504,4 +532,18 @@ input[type=range]{
   border-color: var(--accent2) !important;
   animation: kp .22s ease;
 }
+
+.language-option{
+  padding:.45rem .65rem;
+  color:var(--text);
+  font-size:.82rem;
+  font-weight:500;
+  cursor:pointer;
+  transition:all .15s;
+}
+.language-option:hover,.language-option.gaze-hover{
+  background:var(--accent)!important;
+  color:#fff!important;
+}
+
 

@@ -2,19 +2,23 @@
 System-wide eye control — moves mouse, clicks, opens/closes windows.
 Runs as a background thread alongside the gaze engine.
 """
-
-import pyautogui
-import pygetwindow as gw
 import threading
 import time
 import subprocess
 import os
 
-# Safety: disable pyautogui fail-safe (move to corner to stop)
-pyautogui.FAILSAFE = True
-pyautogui.PAUSE    = 0.0   # no delay between actions
-
-SCREEN_W, SCREEN_H = pyautogui.size()
+try:
+    import pyautogui
+    import pygetwindow as gw
+    pyautogui.FAILSAFE = True
+    pyautogui.PAUSE    = 0.0   # no delay between actions
+    SCREEN_W, SCREEN_H = pyautogui.size()
+    DESKTOP_CONTROL_AVAILABLE = True
+except Exception as _e:
+    pyautogui = None
+    gw = None
+    SCREEN_W, SCREEN_H = 1920, 1080
+    DESKTOP_CONTROL_AVAILABLE = False
 
 
 class SystemController:

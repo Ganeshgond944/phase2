@@ -41,6 +41,7 @@ EyeType is a real-time eye-tracking keyboard that uses a standard webcam to:
 | 📊 Session Stats | Keys, words, WPM, blinks |
 | 🌙 Dark/Light Mode | Toggle theme |
 | ⌨️ 3 Keyboard Modes | Letters, Numbers, Emoji |
+| 🌐 Language Switch | 6 Indian languages + English via on-screen key & Alt+L shortcut |
 
 ---
 

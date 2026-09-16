@@ -246,6 +246,8 @@ def predict_words():
     return jsonify({"suggestions": suggestions, "current_word": current})
 
 
+_tts_lock = threading.Lock()
+
 @app.route("/api/speak", methods=["POST"])
 def speak_text():
     data = request.json or {}
@@ -256,6 +258,7 @@ def speak_text():
         return jsonify({"status": "empty"})
 
     language_codes = {
+        "english": "en",
         "kannada": "kn",
         "telugu": "te",
         "hindi": "hi",
@@ -264,36 +267,23 @@ def speak_text():
     }
 
     def _speak():
-        try:
-            if language == "english":
-                import pyttsx3
-                engine = pyttsx3.init("sapi5")
-                voices = engine.getProperty("voices")
-
-                if len(voices) > 2:
-                    engine.setProperty("voice", voices[2].id)
-                elif voices:
-                    engine.setProperty("voice", voices[0].id)
-
-                engine.setProperty("rate", 150)
-                engine.setProperty("volume", 1.0)
-                engine.say(text)
-                engine.runAndWait()
-                engine.stop()
-
-            elif language in language_codes:
+        with _tts_lock:
+            try:
                 from gtts import gTTS
                 from playsound import playsound
                 import tempfile
                 import os
 
+                lang_code = language_codes.get(language, "en")
                 fd, filename = tempfile.mkstemp(suffix=".mp3")
                 os.close(fd)
 
                 try:
+                    # Unified single tone across all languages: Google Indian TTS voice
                     tts = gTTS(
                         text=text,
-                        lang=language_codes[language],
+                        lang=lang_code,
+                        tld="co.in" if lang_code == "en" else "com",
                         slow=False
                     )
                     tts.save(filename)
@@ -304,11 +294,21 @@ def speak_text():
                     except Exception:
                         pass
 
-            else:
-                print(f"Unsupported TTS language: {language}")
-
-        except Exception as e:
-            print(f"TTS error: {e}")
+            except Exception as ge:
+                # Fallback to pyttsx3 only if gTTS is unavailable (e.g. offline)
+                try:
+                    import pyttsx3
+                    try:
+                        engine = pyttsx3.init("sapi5")
+                    except Exception:
+                        engine = pyttsx3.init()
+                    engine.setProperty("rate", 145)
+                    engine.setProperty("volume", 1.0)
+                    engine.say(text)
+                    engine.runAndWait()
+                    engine.stop()
+                except Exception as pe:
+                    print(f"TTS error: gTTS ({ge}), pyttsx3 ({pe})")
 
     threading.Thread(target=_speak, daemon=True).start()
     return jsonify({"status": "speaking"})
@@ -586,9 +586,111 @@ def on_disconnect():
     print(f"Client disconnected: {request.sid}")
 
 
+_client_frame_count = 0
+
+@socketio.on("client_frame")
+def handle_client_frame(data):
+    global engine, heatmap, fixation_log, _client_frame_count
+    if not isinstance(data, dict):
+        return
+
+    img_data = data.get("image") or data.get("data") or ""
+    if not img_data:
+        return
+
+    if "," in img_data:
+        img_data = img_data.split(",", 1)[1]
+
+    try:
+        img_bytes = base64.b64decode(img_data)
+        np_arr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if frame is None:
+            return
+
+        if data.get("flip", True):
+            frame = cv2.flip(frame, 1)
+
+        if engine is None:
+            init_engine()
+
+        result = engine.process_frame(frame)
+    except Exception as e:
+        result = {
+            "gaze_x": SCREEN_W // 2, "gaze_y": SCREEN_H // 2,
+            "blink": False, "blink_probability": 0.0,
+            "face_detected": False, "left_ear": 1.0, "right_ear": 1.0,
+            "pitch": 0.0, "yaw": 0.0,
+        }
+
+    # Heatmap
+    hx = min(result["gaze_x"] * 192 // max(SCREEN_W, 1), 191)
+    hy = min(result["gaze_y"] * 108 // max(SCREEN_H, 1), 107)
+    heatmap[hy, hx] += 1.0
+
+    # Fixation log
+    fixation_log.append({
+        "x": result["gaze_x"], "y": result["gaze_y"],
+        "t": time.time(), "blink": result["blink"],
+    })
+    if len(fixation_log) > 300:
+        fixation_log.pop(0)
+
+    if result["blink"]:
+        session_stats["blinks"] += 1
+
+    emit("gaze", {
+        "x":           result["gaze_x"],
+        "y":           result["gaze_y"],
+        "blink":       result["blink"],
+        "left_blink":  result.get("left_blink", False),
+        "right_blink": result.get("right_blink", False),
+        "blink_prob":  round(result["blink_probability"], 2),
+        "face":        result["face_detected"],
+        "left_ear":    round(result["left_ear"], 3),
+        "right_ear":   round(result["right_ear"], 3),
+        "pitch":       round(result.get("pitch", 0.0), 3),
+        "yaw":         round(result.get("yaw", 0.0), 3),
+        "ear_ready":   engine._ear_ready if engine else False,
+    })
+
+    # Return annotated frame (~5 fps or when forced)
+    _client_frame_count += 1
+    if _client_frame_count % 3 == 0 or data.get("force_frame", False):
+        try:
+            disp = frame.copy()
+            fx = int(result["gaze_x"] * disp.shape[1] / max(SCREEN_W, 1))
+            fy = int(result["gaze_y"] * disp.shape[0] / max(SCREEN_H, 1))
+            color = (0, 0, 255) if result["blink"] else (0, 255, 0)
+            cv2.circle(disp, (fx, fy), 10, color, -1)
+            cv2.circle(disp, (fx, fy), 13, (255, 255, 255), 2)
+            if not result["face_detected"]:
+                cv2.putText(disp, "No face", (10, 35),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
+            if result["blink"]:
+                cv2.putText(disp, "BLINK", (10, 35),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+            ear_avg = (result["left_ear"] + result["right_ear"]) / 2
+            cv2.putText(disp, f"EAR:{ear_avg:.2f}", (10, disp.shape[0] - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 100), 1)
+            ok, buf = cv2.imencode(".jpg", disp, [cv2.IMWRITE_JPEG_QUALITY, 55])
+            if ok:
+                emit("frame", {"data": base64.b64encode(buf).decode()})
+        except Exception:
+            pass
+
+
+# Pre-init engine on import if possible
+try:
+    init_engine()
+except Exception as _e:
+    print(f"Deferred engine initialization: {_e}")
+
+
 # ── Entry ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    init_engine()
+    if engine is None:
+        init_engine()
     print("\n→ http://localhost:5000\n")
     socketio.run(
         app,

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Virtual keyboard â€” letters, numbers, emoji modes.
  * Supports dwell + blink selection.
  */
@@ -9,7 +9,7 @@ const KB_MODES = {
     ["Q","W","E","R","T","Y","U","I","O","P"],
     ["A","S","D","F","G","H","J","K","L","↵"],
     ["Z","X","C","V","B","N","M",",",".","?"],
-    ["CLR","SPACE","CAPS","!"],
+    ["CLR","LANG","SPACE","CAPS","!"],
   ],
   numbers: [
     ["7","8","9","⌫"],
@@ -22,7 +22,7 @@ const KB_MODES = {
     ["\u{1F600}","\u{1F602}","\u{1F923}","\u{1F60A}","\u{1F60D}","\u{1F618}","\u{1F622}","\u{1F62E}","\u{1F621}","\u{1F389}"],
     ["\u{1F44D}","\u{1F44B}","\u{1F64F}","\u{1F914}","\u{1F634}","\u{1F917}","\u{1F496}","\u{1F970}"],
     ["\u{2B50}","\u{1F525}","\u{1F4AF}","\u{2728}","\u{1F3AF}","\u{1F4DE}","\u{1F4E7}","\u{1F4A1}","\u{1F697}","\u{2764}"],
-    ["CLR","SPACE","\u232B","\u21B5"],
+    ["CLR","LANG","SPACE","\u232B","\u21B5"],
   ],
 };
 
@@ -32,7 +32,7 @@ const LANGUAGE_LAYOUTS = {
     ["Q","W","E","R","T","Y","U","I","O","P"],
     ["A","S","D","F","G","H","J","K","L","↵"],
     ["Z","X","C","V","B","N","M",",",".","?"],
-    ["CLR","SPACE","CAPS","!"],
+    ["CLR","LANG","SPACE","CAPS","!"],
   ],
 
   kannada: [
@@ -42,7 +42,7 @@ const LANGUAGE_LAYOUTS = {
     ["\u0C9C","\u0C9D","\u0C9E","\u0C9F","\u0CA0","\u0CA1","\u0CA2","\u0CA3","\u0CA4","\u0CA5"],
     ["\u0CA6","\u0CA7","\u0CA8","\u0CAA","\u0CAB","\u0CAC","\u0CAD","\u0CAE","\u0CAF","\u0CB0"],
     ["\u0CB2","\u0CB5","\u0CB6","\u0CB7","\u0CB8","\u0CB9","\u0CB3",",",".","?"],
-    ["CLR","SPACE","!"],
+    ["CLR","LANG","SPACE","!"],
   ],
 
   telugu: [
@@ -52,7 +52,7 @@ const LANGUAGE_LAYOUTS = {
     ["\u0C1C","\u0C1D","\u0C1E","\u0C1F","\u0C20","\u0C21","\u0C22","\u0C23","\u0C24","\u0C25"],
     ["\u0C26","\u0C27","\u0C28","\u0C2A","\u0C2B","\u0C2C","\u0C2D","\u0C2E","\u0C2F","\u0C30"],
     ["\u0C32","\u0C35","\u0C36","\u0C37","\u0C38","\u0C39","\u0C33",",",".","?"],
-    ["CLR","SPACE","!"],
+    ["CLR","LANG","SPACE","!"],
   ],
 
   hindi: [
@@ -62,7 +62,7 @@ const LANGUAGE_LAYOUTS = {
     ["\u091E","\u091F","\u0920","\u0921","\u0922","\u0923","\u0924","\u0925","\u0926","\u0927"],
     ["\u0928","\u092A","\u092B","\u092C","\u092D","\u092E","\u092F","\u0930","\u0932","\u0935"],
     ["\u0936","\u0937","\u0938","\u0939",",",".","?"],
-    ["CLR","SPACE","!"],
+    ["CLR","LANG","SPACE","!"],
   ],
 
   tamil: [
@@ -71,7 +71,7 @@ const LANGUAGE_LAYOUTS = {
     ["\u0B93","\u0B94","\u0B95","\u0B99","\u0B9A","\u0B9E","\u0B9F","\u0BA3","\u0BA4","\u0BA8"],
     ["\u0BA9","\u0BAA","\u0BAE","\u0BAF","\u0BB0","\u0BB2","\u0BB5","\u0BB4","\u0BB3","\u0BB1"],
     ["\u0BC0","\u0BC1","\u0BC2","\u0BC6","\u0BC7","\u0BC8","\u0BCA","\u0BCB","\u0BCC",",","."],
-    ["CLR","SPACE","!"],
+    ["CLR","LANG","SPACE","!"],
   ],
 
   malayalam: [
@@ -81,7 +81,7 @@ const LANGUAGE_LAYOUTS = {
     ["\u0D1C","\u0D1D","\u0D1E","\u0D1F","\u0D20","\u0D21","\u0D22","\u0D23","\u0D24","\u0D25"],
     ["\u0D26","\u0D27","\u0D28","\u0D2A","\u0D2B","\u0D2C","\u0D2D","\u0D2E","\u0D2F","\u0D30"],
     ["\u0D32","\u0D35","\u0D36","\u0D37","\u0D38","\u0D39","\u0D33",",",".","?"],
-    ["CLR","SPACE","!"],
+    ["CLR","LANG","SPACE","!"],
   ],
 };
 const SPECIAL_KEYS = {
@@ -90,6 +90,7 @@ const SPECIAL_KEYS = {
   "SPACE":{ label:"SPACE",action:"space",      cls:"widest" },
   "CLR":  { label:"CLR",  action:"clear",      cls:"clr-key" },
   "CAPS": { label:"CAPS", action:"caps",        cls:"wide" },
+  "LANG": { label:"🌐 LANG", action:"lang",    cls:"wide lang-key" },
 };
 
 class VirtualKeyboard {
@@ -145,6 +146,17 @@ class VirtualKeyboard {
         const spec = SPECIAL_KEYS[keyVal];
         const btn  = document.createElement("button");
         let label  = spec ? spec.label : keyVal;
+        if (keyVal === "LANG") {
+          const langDisplay = {
+            english: "ENG",
+            kannada: "ಕನ್ನಡ",
+            telugu: "తెలుగు",
+            hindi: "हिन्दी",
+            tamil: "தமிழ்",
+            malayalam: "മലയാളം"
+          };
+          label = `🌐 ${langDisplay[this.language] || "LANG"}`;
+        }
         if (!spec && this.mode === "letters" && this.capsOn) label = label.toUpperCase();
         if (!spec && this.mode === "letters" && !this.capsOn && /[A-Z]/.test(label))
           label = label.toLowerCase();
@@ -152,7 +164,10 @@ class VirtualKeyboard {
                         + (this.mode === "emoji" ? " emoji-key" : "");
         btn.textContent = label;
         btn.dataset.key = keyVal;
-        btn.setAttribute("aria-label", spec ? spec.action : keyVal);
+        btn.setAttribute("aria-label", spec ? (keyVal === "LANG" ? "Switch language (Alt+L)" : spec.action) : keyVal);
+        if (keyVal === "LANG") {
+          btn.title = "Switch Language (Shortcut: Alt + L)";
+        }
         const ring = document.createElement("div");
         ring.className = "dwell-ring";
         btn.appendChild(ring);
@@ -171,6 +186,11 @@ class VirtualKeyboard {
     if (action === "caps") {
       this.capsOn = !this.capsOn;
       this._build();
+      return;
+    }
+
+    if (action === "lang") {
+      this.onKeyPress("lang");
       return;
     }
 
@@ -259,6 +279,16 @@ class VirtualKeyboard {
   }
 
   setDwellDuration(ms) { this.dwellDuration = ms; }
+
+  setLanguage(lang) {
+    if (this.language !== lang) {
+      this.language = lang;
+      this.capsOn = false;
+      this._cancelDwell();
+      this.hoveredKey = null;
+      this._build();
+    }
+  }
 }
 
 
